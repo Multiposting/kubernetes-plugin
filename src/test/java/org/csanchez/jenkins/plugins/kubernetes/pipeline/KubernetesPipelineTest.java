@@ -59,12 +59,11 @@ import hudson.slaves.RetentionStrategy;
 import io.fabric8.kubernetes.api.model.NamespaceBuilder;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import jenkins.model.JenkinsLocationConfiguration;
+
 /**
  * @author Carlos Sanchez
  */
 public class KubernetesPipelineTest {
-
-    private static final String TESTING_NAMESPACE = "kubernetes-plugin-test";
 
     @ClassRule
     public static BuildWatcher buildWatcher = new BuildWatcher();
@@ -79,19 +78,14 @@ public class KubernetesPipelineTest {
     @Rule
     public TemporaryFolder tmp = new TemporaryFolder();
 
-    private static KubernetesCloud cloud = new KubernetesCloud("minikube");
+    private static KubernetesCloud cloud;
 
     @BeforeClass
     public static void configureCloud() throws Exception {
         // do not run if minikube is not running
         assumeMiniKube();
 
-        cloud.setServerUrl(miniKubeUrl().toExternalForm());
-        cloud.setNamespace(TESTING_NAMESPACE);
-        KubernetesClient client = cloud.connect();
-        // Run in our own testing namespace
-        client.namespaces().createOrReplace(
-                new NamespaceBuilder().withNewMetadata().withName(TESTING_NAMESPACE).endMetadata().build());
+        cloud = setupCloud();
 
         // Create a busybox template
         PodTemplate busyboxTemplate = new PodTemplate();
@@ -130,8 +124,18 @@ public class KubernetesPipelineTest {
     public void runInPod() throws Exception {
         configureCloud(r);
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
-        p.setDefinition(new CpsFlowDefinition(loadPipelineScript("runInPod.groovy")
-                , true));
+        p.setDefinition(new CpsFlowDefinition(loadPipelineScript("runInPod.groovy"), true));
+        WorkflowRun b = p.scheduleBuild2(0).waitForStart();
+        assertNotNull(b);
+        r.assertBuildStatusSuccess(r.waitForCompletion(b));
+        r.assertLogContains("PID file contents: ", b);
+    }
+
+    @Test
+    public void runInPodWithMultipleContainers() throws Exception {
+        configureCloud(r);
+        WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
+        p.setDefinition(new CpsFlowDefinition(loadPipelineScript("runInPodWithMultipleContainers.groovy"), true));
         WorkflowRun b = p.scheduleBuild2(0).waitForStart();
         assertNotNull(b);
         r.assertBuildStatusSuccess(r.waitForCompletion(b));
